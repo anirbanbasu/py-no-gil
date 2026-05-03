@@ -1,0 +1,25 @@
+[project]
+name = "py-no-gil"
+version = "0.1.0"
+description = "Examples demonstrating the use of free-threading in Python."
+readme = {file = "README.md", content-type = "text/markdown"}
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+authors = [
+    { name = "Anirban Basu", email = "anirbanbasu@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+py-no-gil = "py_no_gil:main"
+parallel-pi = "py_no_gil.pi:run_parallel_pi"
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.34",
+]
