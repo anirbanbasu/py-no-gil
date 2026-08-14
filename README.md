@@ -52,6 +52,23 @@ uv run parallel-primes count --compare-gil
 uv run parallel-primes count --compare-gil --stop 1000000
 ```
 
+### N-body simulation
+
+This demo simulates a system of particles under mutual gravitational attraction. The force calculation — a loop over all particle pairs — is split across worker threads, matching the parallel-work-splitting strategy used by the π and fractal examples.
+
+```bash
+uv run parallel-nbody --help
+uv run parallel-nbody count --particles 1000 --steps 200
+uv run parallel-nbody list --particles 500 --steps 100
+```
+
+To compare the same workload with the GIL enabled and disabled:
+
+```bash
+uv run parallel-nbody count --compare-gil
+uv run parallel-nbody list --compare-gil --particles 1000 --steps 100
+```
+
 ### Mandelbrot and Julia sets
 
 This demo splits a fractal image by rows across worker threads, writes a P6 `.ppm` you can open in an image viewer, and prints a small truecolor ANSI preview in the terminal.
