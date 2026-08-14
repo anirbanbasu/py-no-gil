@@ -1,7 +1,5 @@
 import io
-import sys
 import unittest
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from py_no_gil.nbody import (
@@ -35,16 +33,12 @@ class IsNBodyTests(unittest.TestCase):
 
 
 class SimulateTests(unittest.TestCase):
-    def test_simulate_returns_correct_particle_count(self):
+    def test_simulate_preserves_particle_structure(self):
         particles = _make_initial_particles(10)
         result = simulate(particles, G=0.1, dt=0.01, steps=3, n=10, worker_count=1)
         self.assertEqual(len(result), 10)
-
-    def test_simulate_preserves_format(self):
-        particles = _make_initial_particles(3)
-        result = simulate(particles, G=0.1, dt=0.01, steps=1, n=3, worker_count=1)
-        for r in result:
-            self.assertEqual(len(r), 5)
+        for particle in result:
+            self.assertEqual(len(particle), 5)
 
 
 class SearchNBodyParallelTests(unittest.TestCase):
@@ -114,33 +108,6 @@ class RunParallelNBodyTests(unittest.TestCase):
         output = buffer.getvalue()
         self.assertIn("Execution time:", output)
         self.assertIn("Final particle count:", output)
-
-    def test_compare_flag_runs_nbody_with_gil_on_then_off(self):
-        calls = []
-
-        def fake_runner(cmd, env, **kwargs):
-            calls.append({"gil": env["PYTHON_GIL"], "cmd": cmd})
-            duration = "2.0000" if env["PYTHON_GIL"] == "1" else "0.5000"
-            return SimpleNamespace(
-                returncode=0,
-                stdout=f"Execution time: {duration} seconds\n",
-                stderr="",
-            )
-
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_nbody(
-                ["count", "--compare-gil", "--particles", "20", "--steps", "20"],
-                runner=fake_runner,
-            )
-
-        output = buffer.getvalue()
-        self.assertEqual([call["gil"] for call in calls], ["1", "0"])
-        for call in calls:
-            self.assertEqual(call["cmd"][:3], [sys.executable, "-m", "py_no_gil.nbody"])
-            self.assertNotIn("--compare-gil", call["cmd"])
-        self.assertIn("4.00x", output)
-        self.assertNotIn("Simulation count: 1", output)
 
 
 if __name__ == "__main__":

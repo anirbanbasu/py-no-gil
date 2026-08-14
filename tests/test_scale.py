@@ -76,53 +76,23 @@ class SweepTests(unittest.TestCase):
 
 
 class RunParallelScaleTests(unittest.TestCase):
-    def test_count_prints_scaling_table_and_execution_time(self):
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_scale(
-                [
-                    "--module",
-                    "primes",
-                    "--workers",
-                    "1,2",
-                    "--",
-                    "count",
-                    "--start",
-                    "1",
-                    "--stop",
-                    "100",
-                ]
-            )
-
-        output = buffer.getvalue()
-        self.assertIn("Scaling sweep for py_no_gil.primes", output)
-        self.assertIn("Workers", output)
-        self.assertIn("Time (s)", output)
-        self.assertIn("Speedup", output)
-        self.assertIn("Chart", output)
-
-    def test_list_prints_scaling_table(self):
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_scale(
-                [
-                    "--module",
-                    "primes",
-                    "--workers",
-                    "1,2",
-                    "--",
-                    "list",
-                    "--start",
-                    "10",
-                    "--stop",
-                    "20",
-                ]
-            )
-
-        output = buffer.getvalue()
-        self.assertIn("Scaling sweep for py_no_gil.primes", output)
-        self.assertIn("Workers", output)
-        self.assertIn("Time (s)", output)
+    def test_prime_modes_print_scaling_table(self):
+        for module_args in (
+            ("count", "--start", "1", "--stop", "100"),
+            ("list", "--start", "10", "--stop", "20"),
+        ):
+            with self.subTest(module_args=module_args):
+                buffer = io.StringIO()
+                with patch("sys.stdout", buffer):
+                    run_parallel_scale(
+                        ["--module", "primes", "--workers", "1,2", "--", *module_args]
+                    )
+                output = buffer.getvalue()
+                self.assertIn("Scaling sweep for py_no_gil.primes", output)
+                self.assertIn("Workers", output)
+                self.assertIn("Time (s)", output)
+                self.assertIn("Speedup", output)
+                self.assertIn("Chart", output)
 
     def test_compare_flag_runs_with_gil_on_then_off(self):
         calls = []

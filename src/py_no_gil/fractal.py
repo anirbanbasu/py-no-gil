@@ -3,11 +3,16 @@ import math
 import os
 import subprocess
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from py_no_gil.pi import compare_gil, default_worker_count, split_work
+from py_no_gil.benchmark import (
+    add_benchmark_arguments,
+    positive_int,
+    print_benchmark,
+    run_benchmark,
+)
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 600
@@ -226,7 +231,7 @@ def parse_args(argv=None):
         )
         kind_parser.add_argument(
             "--workers",
-            type=int,
+            type=positive_int,
             default=default_worker_count(),
             help=f"Number of worker threads to run. Available CPU cores: {default_worker_count()}.",
         )
@@ -238,6 +243,7 @@ def parse_args(argv=None):
                 "then print a timing comparison."
             ),
         )
+        add_benchmark_arguments(kind_parser)
 
     return parser.parse_args(argv)
 
@@ -246,53 +252,79 @@ def run_parallel_fractal(argv=None, runner=subprocess.run):
     args = parse_args(argv)
     if args.compare_gil:
         child_argv = sys.argv[1:] if argv is None else argv
-        print(compare_gil(child_argv, runner=runner, module="py_no_gil.fractal"))
+        print(
+            compare_gil(
+                child_argv,
+                runner=runner,
+                module="py_no_gil.fractal",
+                output_json=args.json,
+            )
+        )
         return
 
-    worker_count = max(2, args.workers) if default_worker_count() > 1 else 1
+    worker_count = args.workers
     xmin, xmax, ymin, ymax = default_bounds(args.kind, args.width, args.height)
     c_real = getattr(args, "c_real", 0.0)
     c_imag = getattr(args, "c_imag", 0.0)
 
-    print(f"Detected {os.cpu_count()} cores.")
-    print(
-        f"Global Interpreter Lock (GIL) is {'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
-    )
-    print(f"Python interpreter: {sys.version}")
-    if args.kind == "julia":
+    if not args.json:
+        print(f"Detected {os.cpu_count()} cores.")
+        print(
+            f"Global Interpreter Lock (GIL) is {'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
+        )
+    if not args.json and args.kind == "julia":
         print(
             f"Computing julia set with c={c_real}+{c_imag}i "
             f"({args.width}x{args.height}, iter={args.iter}) "
             f"across {worker_count} workers."
         )
-    else:
+    elif not args.json:
         print(
             f"Computing mandelbrot set "
             f"({args.width}x{args.height}, iter={args.iter}) "
             f"across {worker_count} workers."
         )
 
-    start_time = time.perf_counter()
-    pixels = render_fractal(
-        args.width,
-        args.height,
-        args.iter,
-        worker_count,
-        args.kind,
-        xmin,
-        xmax,
-        ymin,
-        ymax,
-        c_real=c_real,
-        c_imag=c_imag,
+    pixels, timing = run_benchmark(
+        lambda: render_fractal(
+            args.width,
+            args.height,
+            args.iter,
+            worker_count,
+            args.kind,
+            xmin,
+            xmax,
+            ymin,
+            ymax,
+            c_real=c_real,
+            c_imag=c_imag,
+        ),
+        repeat=args.repeat,
+        warmup=args.warmup,
+        quiet=args.json,
     )
-    end_time = time.perf_counter()
 
     output_path = Path(args.output)
     write_ppm(output_path, args.width, args.height, pixels)
-    print(f"Wrote {output_path}")
-    print(format_ansi_preview(pixels, args.width, args.height, args.preview_width))
-    print(f"Execution time: {end_time - start_time:.4f} seconds")
+    if not args.json:
+        print(f"Wrote {output_path}")
+        print(format_ansi_preview(pixels, args.width, args.height, args.preview_width))
+    print_benchmark(
+        name="fractal",
+        workers=worker_count,
+        parameters={
+            "kind": args.kind,
+            "width": args.width,
+            "height": args.height,
+            "max_iter": args.iter,
+            "output": str(output_path),
+            "repeat": args.repeat,
+            "warmup": args.warmup,
+        },
+        timing=timing,
+        result={"output": str(output_path), "pixels": len(pixels)},
+        output_json=args.json,
+    )
 
 
 if __name__ == "__main__":

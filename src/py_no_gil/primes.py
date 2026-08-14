@@ -3,10 +3,15 @@ import math
 import os
 import subprocess
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 from py_no_gil.pi import compare_gil, default_worker_count, split_work
+from py_no_gil.benchmark import (
+    add_benchmark_arguments,
+    positive_int,
+    print_benchmark,
+    run_benchmark,
+)
 
 DEFAULT_START = 1
 DEFAULT_STOP = 1_000_000
@@ -80,13 +85,14 @@ def parse_args(argv=None):
         )
         mode_parser.add_argument(
             "--stop",
-            type=int,
+            type=positive_int,
             default=DEFAULT_STOP,
             help="Stop of the range (exclusive).",
         )
+        add_benchmark_arguments(mode_parser)
         mode_parser.add_argument(
             "--workers",
-            type=int,
+            type=positive_int,
             default=default_worker_count(),
             help=f"Number of worker threads to run. Available CPU cores: {default_worker_count()}.",
         )
@@ -106,35 +112,54 @@ def run_parallel_primes(argv=None, runner=subprocess.run):
     args = parse_args(argv)
     if args.compare_gil:
         child_argv = sys.argv[1:] if argv is None else argv
-        print(compare_gil(child_argv, runner=runner, module="py_no_gil.primes"))
+        print(
+            compare_gil(
+                child_argv,
+                runner=runner,
+                module="py_no_gil.primes",
+                output_json=args.json,
+            )
+        )
         return
 
-    worker_count = max(2, args.workers) if default_worker_count() > 1 else 1
+    worker_count = args.workers
 
-    print(f"Detected {os.cpu_count()} cores.")
-    print(
-        f"Global Interpreter Lock (GIL) is {'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
-    )
-    print(f"Python interpreter: {sys.version}")
-    print(
-        f"Searching for primes in [{args.start}, {args.stop}) across {worker_count} workers."
-    )
-
-    start_time = time.perf_counter()
-
-    if args.mode == "count":
-        result = search_primes_parallel(
-            worker_count, args.start, args.stop, mode="count"
+    if not args.json:
+        print(f"Detected {os.cpu_count()} cores.")
+        print(
+            f"Global Interpreter Lock (GIL) is {'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
         )
-        print(f"Prime count: {result}")
-    else:
-        result = search_primes_parallel(
-            worker_count, args.start, args.stop, mode="list"
+        print(
+            f"Searching for primes in [{args.start}, {args.stop}) across {worker_count} workers."
         )
-        print(f"Primes: {', '.join(str(p) for p in result)}")
 
-    end_time = time.perf_counter()
-    print(f"Execution time: {end_time - start_time:.4f} seconds")
+    result, timing = run_benchmark(
+        lambda: search_primes_parallel(
+            worker_count, args.start, args.stop, mode=args.mode
+        ),
+        repeat=args.repeat,
+        warmup=args.warmup,
+        quiet=args.json,
+    )
+    if not args.json:
+        if args.mode == "count":
+            print(f"Prime count: {result}")
+        else:
+            print(f"Primes: {', '.join(str(p) for p in result)}")
+    print_benchmark(
+        name="primes",
+        workers=worker_count,
+        parameters={
+            "mode": args.mode,
+            "start": args.start,
+            "stop": args.stop,
+            "repeat": args.repeat,
+            "warmup": args.warmup,
+        },
+        timing=timing,
+        result={"count": result} if args.mode == "count" else {"primes": result},
+        output_json=args.json,
+    )
 
 
 if __name__ == "__main__":

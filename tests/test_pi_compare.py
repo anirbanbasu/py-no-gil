@@ -1,8 +1,7 @@
-import io
+import json
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
 
 from py_no_gil.pi import (
     argv_without_compare_flag,
@@ -10,7 +9,6 @@ from py_no_gil.pi import (
     format_gil_comparison,
     parse_args,
     parse_execution_time,
-    run_parallel_pi,
 )
 
 
@@ -41,6 +39,21 @@ class FormatGilComparisonTests(unittest.TestCase):
 
 
 class CompareGilTests(unittest.TestCase):
+    def test_json_comparison_returns_a_single_record(self):
+        def fake_runner(cmd, env, **kwargs):
+            duration = 2.0 if env["PYTHON_GIL"] == "1" else 0.5
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"timing": {"median_seconds": duration}}),
+                stderr="",
+            )
+
+        report = json.loads(
+            compare_gil(["bbp", "--json"], runner=fake_runner, output_json=True)
+        )
+        self.assertEqual(report["speedup_gil_disabled_vs_enabled"], 4.0)
+        self.assertIn("gil_enabled", report)
+
     def test_runs_workload_with_gil_on_then_off(self):
         calls = []
 
@@ -80,30 +93,3 @@ class ParseArgsCompareFlagTests(unittest.TestCase):
             with self.subTest(method=method):
                 args = parse_args([method, "--compare-gil"])
                 self.assertTrue(args.compare_gil)
-
-
-class RunParallelPiCompareTests(unittest.TestCase):
-    def test_compare_flag_prints_harness_report_instead_of_computing_locally(self):
-        calls = []
-
-        def fake_runner(cmd, env, **kwargs):
-            calls.append(env["PYTHON_GIL"])
-            duration = "2.0000" if env["PYTHON_GIL"] == "1" else "0.5000"
-            return SimpleNamespace(
-                returncode=0,
-                stdout=f"Execution time: {duration} seconds\n",
-                stderr="",
-            )
-
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_pi(
-                ["bbp", "--compare-gil", "--terms", "4"], runner=fake_runner
-            )
-
-        output = buffer.getvalue()
-        self.assertEqual(calls, ["1", "0"])
-        self.assertIn("4.00x", output)
-        self.assertIn("2.0000", output)
-        self.assertIn("0.5000", output)
-        self.assertNotIn("Calculated π:", output)

@@ -1,6 +1,6 @@
 # Python with no GIL, a.k.a. py-no-gil
 
-This repository contains some code examples demonstrating the use of free-threading in Python, i.e., without the Global Interpreter Lock (GIL). Since Python 3.14, the GIL is disabled by default, allowing for true multi-threading in Python. The GIL may be enabled using `PYTHON_GIL=1`.
+This repository contains code examples demonstrating free-threading in Python, i.e., execution without the Global Interpreter Lock (GIL). Free-threading is available in a separately built CPython interpreter (enabled with `--disable-gil` when building CPython); it is not the default Python build. A free-threaded build can run with the GIL enabled or disabled using `PYTHON_GIL=1` or `PYTHON_GIL=0` respectively. Check the running interpreter with `sysconfig.get_config_var("Py_GIL_DISABLED")` and its current setting with `sys._is_gil_enabled()`.
 
 ## Usage
 
@@ -11,6 +11,18 @@ uv run py-no-gil
 ```
 
 This will display the available scripts.
+
+## Benchmarking
+
+Every workload accepts `--workers N`, `--warmup N`, and `--repeat N`. One warm-up and three measured runs are the defaults; the reported execution time is the median, with minimum and maximum shown alongside it. Set `--workers 1` to establish a serial baseline—this value is respected exactly.
+
+Every workload also accepts `--json`, which prints one machine-readable JSON record containing the workload parameters, result summary, timing samples, interpreter details, free-threaded-build status, and current GIL state. For example:
+
+```bash
+uv run parallel-primes count --start 1 --stop 1000000 --workers 4 --repeat 5 --json
+```
+
+Benchmark results vary with CPU topology, memory bandwidth, thermal limits, system load, allocation overhead, task granularity, and contention. Free-threading removes the GIL bottleneck for compatible CPU-bound Python work; it does not guarantee linear scaling.
 
 ### Computing π
 
@@ -96,6 +108,12 @@ uv run parallel-scale --module nbody --workers 1,2,4,8 --compare-gil -- count --
 ```
 
 The `--compare-gil` flag runs each configuration twice (GIL on and off) and prints both curves side-by-side so you can see the contrast. Note that the `--compare-gil` flag is not a flag for the chosen module so, it should precede the `--`.
+
+The table includes parallel efficiency (speedup divided by worker count). Use `--output-format json` or `--output-format csv` when you want to save or graph the sweep:
+
+```bash
+uv run parallel-scale --module primes --workers 1,2,4,8 --output-format csv -- count --start 1 --stop 1000000
+```
 
 For example, running `uv run parallel-scale --module pi -- monte-carlo` shows something like the following.
 

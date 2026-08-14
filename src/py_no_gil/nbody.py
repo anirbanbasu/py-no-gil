@@ -3,10 +3,15 @@ import math
 import os
 import subprocess
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 from py_no_gil.pi import compare_gil, default_worker_count, split_work
+from py_no_gil.benchmark import (
+    add_benchmark_arguments,
+    positive_int,
+    print_benchmark,
+    run_benchmark,
+)
 
 DEFAULT_PARTICLES = 100
 DEFAULT_STEPS = 100
@@ -175,7 +180,7 @@ def parse_args(argv=None):
         )
         sub.add_argument(
             "--workers",
-            type=int,
+            type=positive_int,
             default=default_worker_count(),
             help=f"Number of worker threads. Available CPU cores: {default_worker_count()}.",
         )
@@ -187,6 +192,7 @@ def parse_args(argv=None):
                 "then print a timing comparison."
             ),
         )
+        add_benchmark_arguments(sub)
 
     return parser.parse_args(argv)
 
@@ -195,52 +201,67 @@ def run_parallel_nbody(argv=None, runner=subprocess.run):
     args = parse_args(argv)
     if args.compare_gil:
         child_argv = sys.argv[1:] if argv is None else argv
-        print(compare_gil(child_argv, runner=runner, module="py_no_gil.nbody"))
+        print(
+            compare_gil(
+                child_argv,
+                runner=runner,
+                module="py_no_gil.nbody",
+                output_json=args.json,
+            )
+        )
         return
 
-    worker_count = max(2, args.workers) if default_worker_count() > 1 else 1
+    worker_count = args.workers
     n = args.particles
 
-    print(f"Detected {os.cpu_count()} cores.")
-    print(
-        f"Global Interpreter Lock (GIL) is "
-        f"{'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
-    )
-    print(f"Python interpreter: {sys.version}")
-    print(
-        f"Simulating {n} particles for {args.steps} steps across {worker_count} workers."
-    )
+    if not args.json:
+        print(f"Detected {os.cpu_count()} cores.")
+        print(
+            f"Global Interpreter Lock (GIL) is "
+            f"{'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
+        )
+        print(
+            f"Simulating {n} particles for {args.steps} steps across {worker_count} workers."
+        )
 
-    start_time = time.perf_counter()
-
-    particles = _make_initial_particles(n)
-    if args.command == "count":
-        result = search_nbody_parallel(
+    def workload():
+        return search_nbody_parallel(
             worker_count,
-            particles,
+            _make_initial_particles(n),
             args.grav_const,
             args.dt,
             args.steps,
-            mode="count",
+            mode="count" if args.command == "count" else "list",
             n=n,
         )
-        print(f"Simulation count: {result}")
-    else:
-        result = search_nbody_parallel(
-            worker_count,
-            particles,
-            args.grav_const,
-            args.dt,
-            args.steps,
-            mode="list",
-            n=n,
-        )
-        count = len(result)
-        print(f"Final particle count: {count}")
-        print(f"Sample positions: {result[:3]}")
 
-    end_time = time.perf_counter()
-    print(f"Execution time: {end_time - start_time:.4f} seconds")
+    result, timing = run_benchmark(
+        workload, repeat=args.repeat, warmup=args.warmup, quiet=args.json
+    )
+    if not args.json:
+        if args.command == "count":
+            print(f"Simulation count: {result}")
+        else:
+            print(f"Final particle count: {len(result)}")
+            print(f"Sample positions: {result[:3]}")
+    print_benchmark(
+        name="nbody",
+        workers=worker_count,
+        parameters={
+            "command": args.command,
+            "particles": n,
+            "steps": args.steps,
+            "dt": args.dt,
+            "grav_const": args.grav_const,
+            "repeat": args.repeat,
+            "warmup": args.warmup,
+        },
+        timing=timing,
+        result={"simulation_count": result}
+        if args.command == "count"
+        else {"particle_count": len(result)},
+        output_json=args.json,
+    )
 
 
 if __name__ == "__main__":

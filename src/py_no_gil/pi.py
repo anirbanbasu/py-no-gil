@@ -1,13 +1,20 @@
 import argparse
+import json
 import math
 import os
 import re
 import sys
 import random
 import subprocess
-import time
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, localcontext
+
+from py_no_gil.benchmark import (
+    add_benchmark_arguments,
+    positive_int,
+    print_benchmark,
+    run_benchmark,
+)
 
 DEFAULT_TOTAL_SAMPLES = 16_777_216
 DEFAULT_SERIES_TERMS = 32
@@ -261,9 +268,12 @@ def argv_without_compare_flag(argv):
 
 def parse_execution_time(output):
     match = EXECUTION_TIME_PATTERN.search(output)
-    if match is None:
-        raise ValueError("Could not find execution time in command output.")
-    return float(match.group(1))
+    if match is not None:
+        return float(match.group(1))
+    try:
+        return float(json.loads(output)["timing"]["median_seconds"])
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValueError("Could not find execution time in command output.") from exc
 
 
 def format_gil_comparison(gil_on_seconds, gil_off_seconds):
@@ -283,11 +293,12 @@ def format_gil_comparison(gil_on_seconds, gil_off_seconds):
     )
 
 
-def compare_gil(argv, runner=subprocess.run, module="py_no_gil.pi"):
+def compare_gil(argv, runner=subprocess.run, module="py_no_gil.pi", output_json=False):
     child_argv = argv_without_compare_flag(argv)
     command = [sys.executable, "-m", module, *child_argv]
     sections = []
     timings = {}
+    records = {}
 
     for label, gil_value in (("enabled", "1"), ("disabled", "0")):
         environment = os.environ.copy()
@@ -303,11 +314,29 @@ def compare_gil(argv, runner=subprocess.run, module="py_no_gil.pi"):
                 message = f"{message}\n{detail}"
             raise RuntimeError(message)
         timings[label] = parse_execution_time(result.stdout)
+        if output_json:
+            try:
+                records[label] = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Expected JSON output from child benchmark.") from exc
         child_output = (result.stdout or "").rstrip()
         sections.append(
             f"=== GIL {label} (PYTHON_GIL={gil_value}) ===\n{child_output}\n"
         )
 
+    if output_json:
+        return json.dumps(
+            {
+                "benchmark": "gil-comparison",
+                "gil_enabled": records["enabled"],
+                "gil_disabled": records["disabled"],
+                "speedup_gil_disabled_vs_enabled": timings["enabled"]
+                / timings["disabled"]
+                if timings["disabled"]
+                else None,
+            },
+            sort_keys=True,
+        )
     sections.append(format_gil_comparison(timings["enabled"], timings["disabled"]))
     return "\n".join(sections)
 
@@ -380,7 +409,7 @@ def parse_args(argv=None):
     ]:
         method_parser.add_argument(
             "--workers",
-            type=int,
+            type=positive_int,
             default=default_worker_count(),
             help=f"Number of worker threads to run. Available CPU cores: {default_worker_count()}.",
         )
@@ -392,6 +421,7 @@ def parse_args(argv=None):
                 "then print a timing comparison."
             ),
         )
+        add_benchmark_arguments(method_parser)
 
     return parser.parse_args(argv)
 
@@ -400,37 +430,52 @@ def run_parallel_pi(argv=None, runner=subprocess.run):
     args = parse_args(argv)
     if args.compare_gil:
         child_argv = sys.argv[1:] if argv is None else argv
-        print(compare_gil(child_argv, runner=runner))
+        print(compare_gil(child_argv, runner=runner, output_json=args.json))
         return
 
-    worker_count = max(2, args.workers) if default_worker_count() > 1 else 1
+    worker_count = args.workers
 
-    print(f"Detected {os.cpu_count()} cores.")
-    print(
-        f"Global Interpreter Lock (GIL) is {'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
+    if not args.json:
+        print(f"Detected {os.cpu_count()} cores.")
+        print(
+            f"Global Interpreter Lock (GIL) is {'enabled. Disable it using PYTHON_GIL=0' if sys._is_gil_enabled() else 'disabled. Enable it using PYTHON_GIL=1'}."
+        )
+
+    def workload():
+        match args.method:
+            case "bbp":
+                return bbp_pi_parallel(args.terms, worker_count, args.precision)
+            case "chudnovsky":
+                return chudnovsky_pi_parallel(args.terms, worker_count, args.precision)
+            case "machin":
+                return machin_pi_parallel(args.terms, worker_count, args.precision)
+            case "monte-carlo":
+                return monte_carlo_pi_parallel(args.samples, worker_count)
+        raise ValueError(f"Unknown method: {args.method}")
+
+    pi_estimate, timing = run_benchmark(
+        workload, repeat=args.repeat, warmup=args.warmup, quiet=args.json
     )
-    print(f"Python interpreter: {sys.version}")
-    start_time = time.perf_counter()
-
-    match args.method:
-        case "bbp":
-            pi_estimate = bbp_pi_parallel(args.terms, worker_count, args.precision)
-        case "chudnovsky":
-            pi_estimate = chudnovsky_pi_parallel(
-                args.terms, worker_count, args.precision
-            )
-        case "machin":
-            pi_estimate = machin_pi_parallel(args.terms, worker_count, args.precision)
-        case "monte-carlo":
-            pi_estimate = monte_carlo_pi_parallel(args.samples, worker_count)
-        case _:
-            # This will not happen due to argparse's required subparsers, but we include it for completeness
-            raise ValueError(f"Unknown method: {args.method}")
-
-    end_time = time.perf_counter()
-
-    print(f"Calculated π: {pi_estimate}")
-    print(f"Execution time: {end_time - start_time:.4f} seconds")
+    parameters = {
+        "method": args.method,
+        "workers": worker_count,
+        "repeat": args.repeat,
+        "warmup": args.warmup,
+    }
+    if args.method == "monte-carlo":
+        parameters["samples"] = args.samples
+    else:
+        parameters.update(terms=args.terms, precision=args.precision)
+    if not args.json:
+        print(f"Calculated π: {pi_estimate}")
+    print_benchmark(
+        name="pi",
+        workers=worker_count,
+        parameters=parameters,
+        timing=timing,
+        result={"pi": str(pi_estimate)},
+        output_json=args.json,
+    )
 
 
 if __name__ == "__main__":

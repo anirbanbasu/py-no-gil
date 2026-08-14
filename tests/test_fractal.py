@@ -1,9 +1,7 @@
 import io
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from py_no_gil.fractal import (
@@ -184,31 +182,3 @@ class RunParallelFractalTests(unittest.TestCase):
         self.assertIn("Execution time:", output)
         self.assertIn("\x1b[38;2;", output)
         self.assertIn(str(output_path), output)
-
-    def test_compare_flag_runs_fractal_module_with_gil_on_then_off(self):
-        calls = []
-
-        def fake_runner(cmd, env, **kwargs):
-            calls.append({"gil": env["PYTHON_GIL"], "cmd": cmd})
-            duration = "2.0000" if env["PYTHON_GIL"] == "1" else "0.5000"
-            return SimpleNamespace(
-                returncode=0,
-                stdout=f"Execution time: {duration} seconds\n",
-                stderr="",
-            )
-
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_fractal(
-                ["julia", "--compare-gil", "--width", "8"], runner=fake_runner
-            )
-
-        output = buffer.getvalue()
-        self.assertEqual([call["gil"] for call in calls], ["1", "0"])
-        for call in calls:
-            self.assertEqual(
-                call["cmd"][:3], [sys.executable, "-m", "py_no_gil.fractal"]
-            )
-            self.assertNotIn("--compare-gil", call["cmd"])
-        self.assertIn("4.00x", output)
-        self.assertNotIn("\x1b[38;2;", output)

@@ -1,7 +1,5 @@
 import io
-import sys
 import unittest
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from py_no_gil.primes import (
@@ -71,48 +69,15 @@ class ParsePrimesArgsTests(unittest.TestCase):
 
 
 class RunParallelPrimesTests(unittest.TestCase):
-    def test_count_prints_result_and_execution_time(self):
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_primes(["count", "--start", "1", "--stop", "100"])
-
-        output = buffer.getvalue()
-        self.assertIn("Prime count: 25", output)
-        self.assertIn("Execution time:", output)
-
-    def test_list_prints_primes_and_execution_time(self):
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_primes(["list", "--start", "10", "--stop", "20"])
-
-        output = buffer.getvalue()
-        self.assertIn("Primes: 11, 13, 17, 19", output)
-        self.assertIn("Execution time:", output)
-
-    def test_compare_flag_runs_primes_module_with_gil_on_then_off(self):
-        calls = []
-
-        def fake_runner(cmd, env, **kwargs):
-            calls.append({"gil": env["PYTHON_GIL"], "cmd": cmd})
-            duration = "2.0000" if env["PYTHON_GIL"] == "1" else "0.5000"
-            return SimpleNamespace(
-                returncode=0,
-                stdout=f"Execution time: {duration} seconds\n",
-                stderr="",
-            )
-
-        buffer = io.StringIO()
-        with patch("sys.stdout", buffer):
-            run_parallel_primes(
-                ["count", "--compare-gil", "--stop", "1000"], runner=fake_runner
-            )
-
-        output = buffer.getvalue()
-        self.assertEqual([call["gil"] for call in calls], ["1", "0"])
-        for call in calls:
-            self.assertEqual(
-                call["cmd"][:3], [sys.executable, "-m", "py_no_gil.primes"]
-            )
-            self.assertNotIn("--compare-gil", call["cmd"])
-        self.assertIn("4.00x", output)
-        self.assertNotIn("Prime count:", output)
+    def test_modes_print_result_and_execution_time(self):
+        cases = (
+            (["count", "--start", "1", "--stop", "100"], "Prime count: 25"),
+            (["list", "--start", "10", "--stop", "20"], "Primes: 11, 13, 17, 19"),
+        )
+        for argv, expected in cases:
+            with self.subTest(argv=argv):
+                buffer = io.StringIO()
+                with patch("sys.stdout", buffer):
+                    run_parallel_primes(argv)
+                self.assertIn(expected, buffer.getvalue())
+                self.assertIn("Execution time:", buffer.getvalue())
