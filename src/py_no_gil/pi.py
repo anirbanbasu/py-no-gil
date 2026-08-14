@@ -283,9 +283,9 @@ def format_gil_comparison(gil_on_seconds, gil_off_seconds):
     )
 
 
-def compare_gil(argv, runner=subprocess.run):
+def compare_gil(argv, runner=subprocess.run, module="py_no_gil.pi"):
     child_argv = argv_without_compare_flag(argv)
-    command = [sys.executable, "-m", "py_no_gil.pi", *child_argv]
+    command = [sys.executable, "-m", module, *child_argv]
     sections = []
     timings = {}
 

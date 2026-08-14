@@ -163,3 +163,4 @@ cython_debug/
 
 local_api.env
 .ruff_cache/
+*.ppm

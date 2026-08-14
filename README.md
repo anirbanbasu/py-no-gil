@@ -34,3 +34,20 @@ To compare the same workload with the GIL enabled and disabled, add `--compare-g
 uv run parallel-pi bbp --compare-gil
 uv run parallel-pi monte-carlo --compare-gil --samples 1000000
 ```
+
+### Mandelbrot and Julia sets
+
+This demo splits a fractal image by rows across worker threads, writes a P6 `.ppm` you can open in an image viewer, and prints a small truecolor ANSI preview in the terminal.
+
+```bash
+uv run parallel-fractal --help
+uv run parallel-fractal mandelbrot
+uv run parallel-fractal julia --c-real -0.8 --c-imag 0.156
+```
+
+To compare the same render with the GIL enabled and disabled:
+
+```bash
+uv run parallel-fractal mandelbrot --compare-gil
+uv run parallel-fractal julia --compare-gil --width 400 --height 300
+```
