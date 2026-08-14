@@ -35,6 +35,23 @@ uv run parallel-pi bbp --compare-gil
 uv run parallel-pi monte-carlo --compare-gil --samples 1000000
 ```
 
+### Prime search
+
+This demo partitions a range `[start, stop)` across worker threads and either counts or lists the prime numbers in that range. It uses the same parallel-work-splitting strategy as the π and fractal examples.
+
+```bash
+uv run parallel-primes --help
+uv run parallel-primes count --start 1 --stop 1000000
+uv run parallel-primes list --start 100 --stop 200
+```
+
+To compare the same workload with the GIL enabled and disabled:
+
+```bash
+uv run parallel-primes count --compare-gil
+uv run parallel-primes count --compare-gil --stop 1000000
+```
+
 ### Mandelbrot and Julia sets
 
 This demo splits a fractal image by rows across worker threads, writes a P6 `.ppm` you can open in an image viewer, and prints a small truecolor ANSI preview in the terminal.
