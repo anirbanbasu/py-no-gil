@@ -27,3 +27,10 @@ The options specific to a method can be seen by running the following, e.g., for
 ```bash
 uv run parallel-pi bbp --help
 ```
+
+To compare the same workload with the GIL enabled and disabled, add `--compare-gil`. This runs the method twice (`PYTHON_GIL=1`, then `PYTHON_GIL=0`) and prints a timing table:
+
+```bash
+uv run parallel-pi bbp --compare-gil
+uv run parallel-pi monte-carlo --compare-gil --samples 1000000
+```

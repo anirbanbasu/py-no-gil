@@ -1,8 +1,10 @@
 import argparse
 import math
 import os
+import re
 import sys
 import random
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, localcontext
@@ -250,7 +252,67 @@ def bbp_pi_parallel(term_count, worker_count, precision):
         return sum(future.result() for future in futures)
 
 
-def parse_args():
+EXECUTION_TIME_PATTERN = re.compile(r"Execution time:\s+([0-9.]+)\s+seconds")
+
+
+def argv_without_compare_flag(argv):
+    return [arg for arg in argv if arg != "--compare-gil"]
+
+
+def parse_execution_time(output):
+    match = EXECUTION_TIME_PATTERN.search(output)
+    if match is None:
+        raise ValueError("Could not find execution time in command output.")
+    return float(match.group(1))
+
+
+def format_gil_comparison(gil_on_seconds, gil_off_seconds):
+    off_speedup = gil_on_seconds / gil_off_seconds if gil_off_seconds else float("inf")
+    return "\n".join(
+        [
+            "=== GIL comparison ===",
+            f"{'GIL':<10} {'Time (s)':<12} Speedup vs GIL-on",
+            f"{'enabled':<10} {gil_on_seconds:<12.4f} 1.00x",
+            f"{'disabled':<10} {gil_off_seconds:<12.4f} {off_speedup:.2f}x",
+            "",
+            (
+                "Free-threading made this run "
+                f"{off_speedup:.2f}x faster than with the GIL."
+            ),
+        ]
+    )
+
+
+def compare_gil(argv, runner=subprocess.run):
+    child_argv = argv_without_compare_flag(argv)
+    command = [sys.executable, "-m", "py_no_gil.pi", *child_argv]
+    sections = []
+    timings = {}
+
+    for label, gil_value in (("enabled", "1"), ("disabled", "0")):
+        environment = os.environ.copy()
+        environment["PYTHON_GIL"] = gil_value
+        result = runner(command, env=environment, capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = f"{result.stdout or ''}{result.stderr or ''}".strip()
+            message = (
+                f"Child process failed with PYTHON_GIL={gil_value} "
+                f"(exit {result.returncode})."
+            )
+            if detail:
+                message = f"{message}\n{detail}"
+            raise RuntimeError(message)
+        timings[label] = parse_execution_time(result.stdout)
+        child_output = (result.stdout or "").rstrip()
+        sections.append(
+            f"=== GIL {label} (PYTHON_GIL={gil_value}) ===\n{child_output}\n"
+        )
+
+    sections.append(format_gil_comparison(timings["enabled"], timings["disabled"]))
+    return "\n".join(sections)
+
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Compute π using multiple CPU cores.")
     subparsers = parser.add_subparsers(dest="method", required=True)
 
@@ -322,12 +384,25 @@ def parse_args():
             default=default_worker_count(),
             help=f"Number of worker threads to run. Available CPU cores: {default_worker_count()}.",
         )
+        method_parser.add_argument(
+            "--compare-gil",
+            action="store_true",
+            help=(
+                "Run the same workload with PYTHON_GIL=1 and PYTHON_GIL=0, "
+                "then print a timing comparison."
+            ),
+        )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def run_parallel_pi():
-    args = parse_args()
+def run_parallel_pi(argv=None, runner=subprocess.run):
+    args = parse_args(argv)
+    if args.compare_gil:
+        child_argv = sys.argv[1:] if argv is None else argv
+        print(compare_gil(child_argv, runner=runner))
+        return
+
     worker_count = max(2, args.workers) if default_worker_count() > 1 else 1
 
     print(f"Detected {os.cpu_count()} cores.")
