@@ -112,19 +112,51 @@ def _print_table(results, title):
     print()
 
 
+MODULE_USAGE = {
+    "pi": "monte-carlo --samples 16_777_216",
+    "primes": "count --start 1 --stop 1000000",
+    "fractal": "mandelbrot --width 400 --height 300",
+    "nbody": "count --particles 500 --steps 50",
+}
+
+
+class ModuleError(Exception):
+    """Raised when a module invocation fails."""
+
+
 def run_parallel_scale(argv=None, runner=subprocess.run):
     args = parse_args(argv)
 
     worker_counts = [int(w) for w in args.workers.split(",")]
 
+    try:
+        results_no_gil = sweep(
+            args.module,
+            args.module_args,
+            worker_counts,
+            gil_on=False,
+            runner=runner,
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        print(file=sys.stderr)
+        print("Compatible modules:", file=sys.stderr)
+        for mod in MODULES:
+            print(f"  {mod}:  parallel-scale --module {mod} -- <args>", file=sys.stderr)
+            print(
+                f"       e.g. uv run parallel-scale --module {mod} -- {MODULE_USAGE[mod]}",
+                file=sys.stderr,
+            )
+        print(file=sys.stderr)
+        print(
+            "Add --compare-gil to also benchmark with the GIL enabled.", file=sys.stderr
+        )
+        raise SystemExit(1)
+
     print(f"Scaling sweep for py_no_gil.{args.module}")
     print(f"Module args: {args.module_args if args.module_args else '(defaults)'}")
     print()
 
-    # Run with GIL disabled (free-threading) — current default
-    results_no_gil = sweep(
-        args.module, args.module_args, worker_counts, gil_on=False, runner=runner
-    )
     _print_table(
         results_no_gil,
         "--- GIL disabled (PYTHON_GIL=0 / free-threading) ---",

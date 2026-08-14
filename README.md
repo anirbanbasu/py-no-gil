@@ -95,4 +95,20 @@ uv run parallel-scale --module primes --workers 1,2,4,8 -- count --start 1 --sto
 uv run parallel-scale --module nbody --workers 1,2,4,8 --compare-gil -- count --particles 500 --steps 50
 ```
 
-The `--compare-gil` flag runs each configuration twice (GIL on and off) and prints both curves side-by-side so you can see the contrast.
+The `--compare-gil` flag runs each configuration twice (GIL on and off) and prints both curves side-by-side so you can see the contrast. Note that the `--compare-gil` flag is not a flag for the chosen module so, it should precede the `--`.
+
+For example, running `uv run parallel-scale --module pi -- monte-carlo` shows something like the following.
+
+```bash
+Scaling sweep for py_no_gil.pi
+Module args: ['monte-carlo']
+
+--- GIL disabled (PYTHON_GIL=0 / free-threading) ---
+
+Workers |   Time (s) |  Speedup | Chart
+------- | ---------- | -------- | ------------------------------------------------
+      1 |     0.8739 |    1.00x | ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+      2 |     0.7458 |    1.17x | ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■□□□□□□
+      4 |     0.5444 |    1.61x | ■■■■■■■■■■■■■■■■■■■■■■■■□□□□□□□□□□□□□□□□
+      8 |     0.3726 |    2.35x | ■■■■■■■■■■■■■■■■■□□□□□□□□□□□□□□□□□□□□□□□
+```
