@@ -17,6 +17,7 @@ parallel-pi = "py_no_gil.pi:run_parallel_pi"
 parallel-fractal = "py_no_gil.fractal:run_parallel_fractal"
 parallel-primes = "py_no_gil.primes:run_parallel_primes"
 parallel-nbody = "py_no_gil.nbody:run_parallel_nbody"
+parallel-scale = "py_no_gil.scale:run_parallel_scale"
 
 [build-system]
 requires = ["uv_build>=0.11.8,<0.12.0"]

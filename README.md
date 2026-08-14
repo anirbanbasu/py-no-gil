@@ -85,3 +85,14 @@ To compare the same render with the GIL enabled and disabled:
 uv run parallel-fractal mandelbrot --compare-gil
 uv run parallel-fractal julia --compare-gil --width 400 --height 300
 ```
+
+### Scaling sweep
+
+This utility sweeps over thread counts (`--workers 1,2,4,8,...`) for **any** of the workload modules above (π, primes, fractal, nbody) and prints a scaling table with an ASCII bar chart. With the GIL enabled you should see a flat time curve (the GIL serializes pure-Python CPU work); without the GIL the time should drop as you add threads until you run out of cores.
+
+```bash
+uv run parallel-scale --module primes --workers 1,2,4,8 -- count --start 1 --stop 1000000
+uv run parallel-scale --module nbody --workers 1,2,4,8 --compare-gil -- count --particles 500 --steps 50
+```
+
+The `--compare-gil` flag runs each configuration twice (GIL on and off) and prints both curves side-by-side so you can see the contrast.
