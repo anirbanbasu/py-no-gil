@@ -25,5 +25,5 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ty>=0.0.34",
+    "ty>=0.0.70",
 ]
