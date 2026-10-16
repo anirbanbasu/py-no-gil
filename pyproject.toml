@@ -20,7 +20,7 @@ parallel-nbody = "py_no_gil.nbody:run_parallel_nbody"
 parallel-scale = "py_no_gil.scale:run_parallel_scale"
 
 [build-system]
-requires = ["uv_build>=0.12.0,<0.13.0"]
+requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
